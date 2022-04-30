@@ -264,7 +264,9 @@ pub fn encode<R: Read, W: Write>(
     height: u32,
     channels: Channels,
     colorspace: ColorSpace,
-) -> Result<(), Error> {
+) -> Result<usize, Error> {
+    let mut written = 0;
+
     let header = Header {
         width,
         height,
@@ -272,7 +274,7 @@ pub fn encode<R: Read, W: Write>(
         colorspace,
     };
     let header_bytes: [u8; 14] = header.into();
-    writer.write(&header_bytes)?;
+    written += writer.write(&header_bytes)?;
 
     let mut previous = Pixel::start();
     let mut index = [Pixel::default(); 64];
@@ -283,19 +285,19 @@ pub fn encode<R: Read, W: Write>(
         if pixel == previous {
             run += 1;
             if run == 63 {
-                writer.write(&op_run(62))?;
+                written += writer.write(&op_run(62))?;
                 run = 1;
             }
         } else {
             if run > 0 {
-                writer.write(&op_run(run))?;
+                written += writer.write(&op_run(run))?;
                 run = 0;
             }
 
             let i = pixel.hash();
             if index[i] == pixel {
                 // if the pixel is stored in the index, use that
-                writer.write(&op_index(i))?;
+                written += writer.write(&op_index(i))?;
             } else if pixel.a() == previous.a() {
                 // check if diffs from the previous pixel fit diff ops, if not
                 // we write the color channels
@@ -305,7 +307,7 @@ pub fn encode<R: Read, W: Write>(
                 let diffgr = diffr.wrapping_sub(diffg);
                 let diffgb = diffb.wrapping_sub(diffg);
                 if diffr > -3 && diffr < 2 && diffg > -3 && diffg < 2 && diffb > -3 && diffb < 2 {
-                    writer.write(&op_diff(diffr, diffg, diffb))?;
+                    written += writer.write(&op_diff(diffr, diffg, diffb))?;
                 } else if diffgr > -9
                     && diffgr < 8
                     && diffg > -33
@@ -313,25 +315,25 @@ pub fn encode<R: Read, W: Write>(
                     && diffgb > -9
                     && diffgb < 8
                 {
-                    writer.write(&op_luma(diffg, diffgr, diffgb))?;
+                    written += writer.write(&op_luma(diffg, diffgr, diffgb))?;
                 } else {
-                    writer.write(&op_rgb(pixel))?;
+                    written += writer.write(&op_rgb(pixel))?;
                 }
             } else {
                 // if alpha differs then we write the whole pixel
-                writer.write(&op_rgba(pixel))?;
+                written += writer.write(&op_rgba(pixel))?;
             }
             index[i] = pixel;
             previous = pixel;
         }
     }
     if run > 0 {
-        writer.write(&op_run(run))?;
+        written += writer.write(&op_run(run))?;
     }
 
-    writer.write(&TRAILER)?;
+    written += writer.write(&TRAILER)?;
 
-    Ok(())
+    Ok(written)
 }
 
 const OP_MASK: u8 = 0b11000000;
@@ -367,10 +369,10 @@ pub fn decode<R: Read, W: Write>(mut reader: R, mut writer: W) -> Result<Header,
             other => match other & OP_MASK {
                 OP_INDEX => {
                     let i = (other & ARG_MASK) as usize;
-                    (index[i].clone(), 1)
+                    (index[i], 1)
                 }
                 OP_DIFF => {
-                    let mut pixel = previous.clone();
+                    let mut pixel = previous;
                     let diffr = ((other & DIFF_R_MASK) >> 4).wrapping_sub(2);
                     let diffg = ((other & DIFF_G_MASK) >> 2).wrapping_sub(2);
                     let diffb = (other & DIFF_B_MASK).wrapping_sub(2);
@@ -381,7 +383,7 @@ pub fn decode<R: Read, W: Write>(mut reader: R, mut writer: W) -> Result<Header,
                 }
                 OP_LUMA => {
                     reader.read_exact(&mut buffer[1..2])?;
-                    let mut pixel = previous.clone();
+                    let mut pixel = previous;
                     let diffg = (other & ARG_MASK).wrapping_sub(32);
                     let diffr = ((buffer[1] & DIFF_GR_MASK) >> 4)
                         .wrapping_sub(8)
@@ -394,7 +396,7 @@ pub fn decode<R: Read, W: Write>(mut reader: R, mut writer: W) -> Result<Header,
                     *pixel.b_mut() = pixel.b().wrapping_add(diffb);
                     (pixel, 1)
                 }
-                OP_RUN => (previous.clone(), (other & ARG_MASK) + 1),
+                OP_RUN => (previous, (other & ARG_MASK) + 1),
                 _ => unreachable!(),
             },
         };
