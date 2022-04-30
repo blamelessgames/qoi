@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn images_test() -> Result<(), Error> {
         let mut path = std::env::current_dir()?;
-        path.push("test_files");
+        path.push("qoi_test_images");
         for entry in std::fs::read_dir(path)? {
             let path = entry?.path();
             if path.is_file() && path.extension().unwrap() == "qoi" {
