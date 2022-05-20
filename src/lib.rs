@@ -50,8 +50,8 @@ impl TryFrom<u8> for Channels {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            3 => Ok(Channels::RGB),
-            4 => Ok(Channels::RGBA),
+            3 => Ok(Self::RGB),
+            4 => Ok(Self::RGBA),
             _ => Err(Error::BadHeaderInvalidChannels),
         }
     }
@@ -69,8 +69,8 @@ impl TryFrom<u8> for ColorSpace {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(ColorSpace::SRGBWithLinearAlpha),
-            1 => Ok(ColorSpace::Linear),
+            0 => Ok(Self::SRGBWithLinearAlpha),
+            1 => Ok(Self::Linear),
             _ => Err(Error::BadHeaderInvalidColorSpace),
         }
     }
@@ -138,7 +138,7 @@ impl Pixel {
 
     #[inline(always)]
     const fn start() -> Self {
-        Self(Pixel::OPAQUE)
+        Self(Self::OPAQUE)
     }
 
     #[inline(always)]
@@ -166,10 +166,10 @@ impl Pixel {
     }
 
     #[inline(always)]
-    fn read<T: Read>(channels: Channels, mut reader: T) -> std::io::Result<Pixel> {
-        let mut buf = Pixel::OPAQUE;
+    fn read<T: Read>(channels: Channels, mut reader: T) -> std::io::Result<Self> {
+        let mut buf = Self::OPAQUE;
         reader.read_exact(&mut buf[0..channels as usize])?;
-        Ok(Pixel(buf))
+        Ok(Self(buf))
     }
 
     #[inline(always)]
